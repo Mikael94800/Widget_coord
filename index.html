@@ -8,19 +8,17 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #f4f6f9; color: #333; }
         h2 { margin-top: 0; color: #2c3e50; font-size: 1.2rem; display: flex; align-items: center; justify-content: space-between; }
         #counter { font-size: 0.9rem; background: #e2e8f0; padding: 2px 8px; border-radius: 12px; color: #475569; }
-        .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px; }
-        .task-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #3498db; transition: all 0.2s; cursor: pointer; }
-        .task-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-left-color: #2980b9; }
-        .task-domain { font-size: 0.75rem; text-transform: uppercase; font-weight: bold; color: #7f8c8d; margin-bottom: 5px; }
-        .task-title { font-size: 1rem; font-weight: bold; color: #2c3e50; margin-bottom: 8px; }
+        .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 15px; }
+        .task-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #3498db; transition: all 0.2s; }
+        .task-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .task-title { font-size: 1rem; font-weight: bold; color: #2c3e50; margin-bottom: 8px; width: 100%; border: 1px solid transparent; background: transparent; }
+        .task-title:focus { background: #fff; border-color: #3498db; outline: none; border-radius: 4px; padding: 2px; }
         .task-project { font-size: 0.85rem; color: #e67e22; font-weight: 500; margin-bottom: 8px; }
-        .task-details { font-size: 0.85rem; color: #555; margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 8px; }
-        .task-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid #f1f1f1; padding-top: 8px; margin-top: 8px; color: #666; }
+        .task-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid #f1f1f1; padding-top: 8px; margin-top: 8px; color: #666; gap: 5px; }
         
-        /* Style du menu déroulant interactif */
-        .status-select { background: #e1f5fe; color: #0288d1; border: 1px solid #b3e5fc; padding: 3px 6px; border-radius: 4px; font-weight: 500; cursor: pointer; font-size: 0.8rem; }
-        .status-select:focus { outline: none; border-color: #0288d1; }
-
+        /* Style des menus déroulants */
+        select, input[type="date"] { background: #f8fafc; border: 1px solid #cbd5e1; padding: 3px 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; }
+        select:focus, input:focus { outline: none; border-color: #3498db; }
         .empty-state { text-align: center; color: #888; padding: 40px; background: white; border-radius: 8px; }
         .hint { font-size: 0.75rem; color: #666; margin-top: 10px; font-style: italic; }
     </style>
@@ -35,40 +33,54 @@
     <div id="taskList" class="task-container">
         <div class="empty-state">Chargement des données depuis Grist...</div>
     </div>
-    <div class="hint">💡 Modifiez directement le statut d'une tâche via le menu déroulant sur chaque carte.</div>
+    <div class="hint">💡 Vous pouvez modifier directement les champs (statuts, domaines, personnes, dates) sur les cartes.</div>
 
     <script>
         let statusOptions = [];
+        let domainOptions = [];
+        let userOptions = [];
 
-        // 1. Initialisation avec un accès 'full' requis pour les modifications
         grist.ready({
             requiredAccess: 'full',
             columns: ['domaine', 'projet', 'description', 'taches', 'attribuee_a', 'date_debut', 'date_butoire', 'statut']
         });
 
-        // 2. Fonction pour charger les choix de statuts depuis la table ETIQUETTES
-        async function loadStatuses() {
+        // Charger les tables de référence (Statuts, Domaines, Utilisateurs)
+        async function loadReferences() {
             try {
-                // Récupération des lignes de la table ETIQUETTES
-                const rows = await grist.docApi.fetchTable('ETIQUETTES');
+                // 1. Statuts depuis ETIQUETTES
+                const etiq = await grist.docApi.fetchTable('ETIQUETTES');
                 statusOptions = [];
-                if (rows && rows.id && rows.taches) {
-                    for (let i = 0; i < rows.id.length; i++) {
-                        if (rows.taches[i]) {
-                            statusOptions.push({ id: rows.id[i], label: rows.taches[i] });
+                domainOptions = [];
+                if (etiq && etiq.id) {
+                    for (let i = 0; i < etiq.id.length; i++) {
+                        if (etiq.taches && etiq.taches[i]) {
+                            statusOptions.push({ id: etiq.id[i], label: etiq.taches[i] });
+                        }
+                        if (etiq.domaines_unite && etiq.domaines_unite[i]) {
+                            domainOptions.push({ id: etiq.id[i], label: etiq.domaines_unite[i] });
+                        }
+                    }
+                }
+
+                // 2. Utilisateurs depuis UTILISATEURS
+                const users = await grist.docApi.fetchTable('Utilisateurs');
+                userOptions = [];
+                if (users && users.id) {
+                    for (let i = 0; i < users.id.length; i++) {
+                        if (users.Email && users.Email[i]) {
+                            userOptions.push({ id: users.id[i], label: users.Email[i] });
                         }
                     }
                 }
             } catch (err) {
-                console.warn("Impossible de charger la table ETIQUETTES automatiquement :", err);
+                console.warn("Erreur lors du chargement des tables de référence :", err);
             }
         }
 
-        // 3. Écoute des enregistrements de la table principale
         grist.onRecords(async function(records, mappings) {
-            // Charger les étiquettes en amont
             if (statusOptions.length === 0) {
-                await loadStatuses();
+                await loadReferences();
             }
 
             const container = document.getElementById('taskList');
@@ -90,38 +102,50 @@
                 if (mapped) {
                     const card = document.createElement('div');
                     card.className = 'task-card';
-                    
-                    // Clic sur la carte -> sélectionne la ligne dans Grist
-                    card.onclick = function() {
-                        grist.setCursorPos({ rowId: record.id });
-                    };
 
-                    // Construction du menu déroulant des statuts
-                    let selectHtml = `<select class="status-select" onclick="event.stopPropagation()" onchange="updateStatus(${record.id}, this.value)">`;
-                    
-                    // Si on a récupéré les options de la table ETIQUETTES
-                    if (statusOptions.length > 0) {
-                        statusOptions.forEach(opt => {
-                            // record.statut contient l'ID de la référence pointant vers ETIQUETTES
-                            const isSelected = (record.statut === opt.id) ? 'selected' : '';
-                            selectHtml += `<option value="${opt.id}" ${isSelected}>${opt.label}</option>`;
-                        });
-                    } else {
-                        selectHtml += `<option value="">${mapped.statut || 'Sélectionner...'}</option>`;
-                    }
-                    selectHtml += `</select>`;
+                    // --- Menu Domaine ---
+                    let domainHtml = `<select onchange="updateField(${record.id}, 'domaine', this.value)">`;
+                    domainHtml += `<option value="">Sélectionner domaine...</option>`;
+                    domainOptions.forEach(opt => {
+                        const sel = (record.domaine === opt.id) ? 'selected' : '';
+                        domainHtml += `<option value="${opt.id}" ${sel}>${opt.label}</option>`;
+                    });
+                    domainHtml += `</select>`;
+
+                    // --- Menu Attribué à ---
+                    let userHtml = `<select onchange="updateField(${record.id}, 'attribuee_a', this.value)">`;
+                    userHtml += `<option value="">Non assigné</option>`;
+                    userOptions.forEach(opt => {
+                        const sel = (record.attribuee_a === opt.id) ? 'selected' : '';
+                        userHtml += `<option value="${opt.id}" ${sel}>${opt.label}</option>`;
+                    });
+                    userHtml += `</select>`;
+
+                    // --- Menu Statut ---
+                    let statusHtml = `<select onchange="updateField(${record.id}, 'statut', this.value)">`;
+                    statusHtml += `<option value="">À définir</option>`;
+                    statusOptions.forEach(opt => {
+                        const sel = (record.statut === opt.id) ? 'selected' : '';
+                        statusHtml += `<option value="${opt.id}" ${sel}>${opt.label}</option>`;
+                    });
+                    statusHtml += `</select>`;
 
                     card.innerHTML = `
-                        <div class="task-domain">${mapped.domaine || 'Domaine non défini'}</div>
+                        <div style="margin-bottom: 5px;">${domainHtml}</div>
                         ${mapped.projet ? `<div class="task-project">📁 ${mapped.projet}</div>` : ''}
-                        <div class="task-title">${mapped.taches || '(Sans titre)'}</div>
-                        ${mapped.description ? `<div class="task-details">${mapped.description}</div>` : ''}
-                        <div class="task-footer">
-                            <span>👤 ${mapped.attribuee_a || 'Non assigné'}</span>
-                            <div>${selectHtml}</div>
+                        <input type="text" class="task-title" value="${mapped.taches || ''}" placeholder="Intitulé de la tâche..." onchange="updateField(${record.id}, 'taches', this.value)">
+                        ${mapped.description ? `<div style="font-size:0.85rem; color:#555; margin-bottom:8px;">${mapped.description}</div>` : ''}
+                        
+                        <div style="margin-bottom: 8px; font-size: 0.8rem;">
+                            👤 ${userHtml}
                         </div>
-                        <div style="font-size: 0.75rem; color: #888; margin-top: 5px; text-align: right;">
-                            📅 ${mapped.date_debut || '...'} ➔ ${mapped.date_butoire || '...'}
+
+                        <div class="task-footer">
+                            <div>${statusHtml}</div>
+                            <div style="font-size: 0.75rem; color: #666;">
+                                📅 <input type="date" value="${mapped.date_debut || ''}" onchange="updateField(${record.id}, 'date_debut', this.value)" style="width:110px;"> ➔ 
+                                <input type="date" value="${mapped.date_butoire || ''}" onchange="updateField(${record.id}, 'date_butoire', this.value)" style="width:110px;">
+                            </div>
                         </div>
                     `;
                     grid.appendChild(card);
@@ -131,19 +155,23 @@
             container.appendChild(grid);
         });
 
-        // 4. Fonction globale appelée lors du changement de valeur du menu déroulant
-        async function updateStatus(rowId, newStatusId) {
+        // Fonction générique pour mettre à jour n'importe quel champ dans Grist
+        async function updateField(rowId, fieldName, value) {
             try {
+                let parsedValue = value;
+                // Si c'est une colonne de référence (ID numérique)
+                if (['domaine', 'attribuee_a', 'statut'].includes(fieldName)) {
+                    parsedValue = value ? Number(value) : null;
+                }
+
                 await grist.selectedTable.update({
                     id: rowId,
-                    fields: {
-                        statut: Number(newStatusId)
-                    }
+                    fields: { [fieldName]: parsedValue }
                 });
-                console.log("Statut mis à jour avec succès pour la ligne", rowId);
+                console.log(`Champ ${fieldName} mis à jour pour la ligne ${rowId}`);
             } catch (err) {
-                console.error("Erreur lors de la mise à jour du statut :", err);
-                alert("Échec de la modification du statut.");
+                console.error(`Erreur lors de la mise à jour de ${fieldName} :`, err);
+                alert("Échec de la modification.");
             }
         }
     </script>
