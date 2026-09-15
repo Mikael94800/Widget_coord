@@ -16,7 +16,6 @@
         .task-project { font-size: 0.85rem; color: #e67e22; font-weight: 500; margin-bottom: 8px; }
         .task-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid #f1f1f1; padding-top: 8px; margin-top: 8px; color: #666; gap: 5px; }
         
-        /* Style des menus déroulants */
         select, input[type="date"] { background: #f8fafc; border: 1px solid #cbd5e1; padding: 3px 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; }
         select:focus, input:focus { outline: none; border-color: #3498db; }
         .empty-state { text-align: center; color: #888; padding: 40px; background: white; border-radius: 8px; }
@@ -33,7 +32,7 @@
     <div id="taskList" class="task-container">
         <div class="empty-state">Chargement des données depuis Grist...</div>
     </div>
-    <div class="hint">💡 Vous pouvez modifier directement les champs (statuts, domaines, personnes, dates) sur les cartes.</div>
+    <div class="hint">💡 Modifiez les champs directement depuis les cartes. Les listes déroulantes sont synchronisées avec vos étiquettes.</div>
 
     <script>
         let statusOptions = [];
@@ -45,25 +44,30 @@
             columns: ['domaine', 'projet', 'description', 'taches', 'attribuee_a', 'date_debut', 'date_butoire', 'statut']
         });
 
-        // Charger les tables de référence (Statuts, Domaines, Utilisateurs)
+        // Chargement unifié et robuste depuis la table ETIQUETTES et Utilisateurs
         async function loadReferences() {
             try {
-                // 1. Statuts depuis ETIQUETTES
+                // Récupération de la table ETIQUETTES (qui gère à la fois les statuts et les domaines)
                 const etiq = await grist.docApi.fetchTable('ETIQUETTES');
                 statusOptions = [];
                 domainOptions = [];
+                
                 if (etiq && etiq.id) {
                     for (let i = 0; i < etiq.id.length; i++) {
+                        const rowId = etiq.id[i];
+                        
+                        // Si la ligne possède un libellé de tâche/statut
                         if (etiq.taches && etiq.taches[i]) {
-                            statusOptions.push({ id: etiq.id[i], label: etiq.taches[i] });
+                            statusOptions.push({ id: rowId, label: etiq.taches[i] });
                         }
+                        // Si la ligne possède un domaine d'unité
                         if (etiq.domaines_unite && etiq.domaines_unite[i]) {
-                            domainOptions.push({ id: etiq.id[i], label: etiq.domaines_unite[i] });
+                            domainOptions.push({ id: rowId, label: etiq.domaines_unite[i] });
                         }
                     }
                 }
 
-                // 2. Utilisateurs depuis UTILISATEURS
+                // Récupération des utilisateurs
                 const users = await grist.docApi.fetchTable('Utilisateurs');
                 userOptions = [];
                 if (users && users.id) {
@@ -79,7 +83,8 @@
         }
 
         grist.onRecords(async function(records, mappings) {
-            if (statusOptions.length === 0) {
+            // S'assure que les options sont chargées
+            if (statusOptions.length === 0 || domainOptions.length === 0) {
                 await loadReferences();
             }
 
@@ -103,7 +108,7 @@
                     const card = document.createElement('div');
                     card.className = 'task-card';
 
-                    // --- Menu Domaine ---
+                    // --- Menu Déroulant DOMAINE (relié à domaines_unite via ID) ---
                     let domainHtml = `<select onchange="updateField(${record.id}, 'domaine', this.value)">`;
                     domainHtml += `<option value="">Sélectionner domaine...</option>`;
                     domainOptions.forEach(opt => {
@@ -112,16 +117,7 @@
                     });
                     domainHtml += `</select>`;
 
-                    // --- Menu Attribué à ---
-                    let userHtml = `<select onchange="updateField(${record.id}, 'attribuee_a', this.value)">`;
-                    userHtml += `<option value="">Non assigné</option>`;
-                    userOptions.forEach(opt => {
-                        const sel = (record.attribuee_a === opt.id) ? 'selected' : '';
-                        userHtml += `<option value="${opt.id}" ${sel}>${opt.label}</option>`;
-                    });
-                    userHtml += `</select>`;
-
-                    // --- Menu Statut ---
+                    // --- Menu Déroulant STATUT ---
                     let statusHtml = `<select onchange="updateField(${record.id}, 'statut', this.value)">`;
                     statusHtml += `<option value="">À définir</option>`;
                     statusOptions.forEach(opt => {
@@ -130,8 +126,17 @@
                     });
                     statusHtml += `</select>`;
 
+                    // --- Menu Déroulant UTILISATEUR ---
+                    let userHtml = `<select onchange="updateField(${record.id}, 'attribuee_a', this.value)">`;
+                    userHtml += `<option value="">Non assigné</option>`;
+                    userOptions.forEach(opt => {
+                        const sel = (record.attribuee_a === opt.id) ? 'selected' : '';
+                        userHtml += `<option value="${opt.id}" ${sel}>${opt.label}</option>`;
+                    });
+                    userHtml += `</select>`;
+
                     card.innerHTML = `
-                        <div style="margin-bottom: 5px;">${domainHtml}</div>
+                        <div style="margin-bottom: 8px;">${domainHtml}</div>
                         ${mapped.projet ? `<div class="task-project">📁 ${mapped.projet}</div>` : ''}
                         <input type="text" class="task-title" value="${mapped.taches || ''}" placeholder="Intitulé de la tâche..." onchange="updateField(${record.id}, 'taches', this.value)">
                         ${mapped.description ? `<div style="font-size:0.85rem; color:#555; margin-bottom:8px;">${mapped.description}</div>` : ''}
@@ -143,8 +148,8 @@
                         <div class="task-footer">
                             <div>${statusHtml}</div>
                             <div style="font-size: 0.75rem; color: #666;">
-                                📅 <input type="date" value="${mapped.date_debut || ''}" onchange="updateField(${record.id}, 'date_debut', this.value)" style="width:110px;"> ➔ 
-                                <input type="date" value="${mapped.date_butoire || ''}" onchange="updateField(${record.id}, 'date_butoire', this.value)" style="width:110px;">
+                                📅 <input type="date" value="${mapped.date_debut || ''}" onchange="updateField(${record.id}, 'date_debut', this.value)" style="width:105px;"> ➔ 
+                                <input type="date" value="${mapped.date_butoire || ''}" onchange="updateField(${record.id}, 'date_butoire', this.value)" style="width:105px;">
                             </div>
                         </div>
                     `;
@@ -155,11 +160,11 @@
             container.appendChild(grid);
         });
 
-        // Fonction générique pour mettre à jour n'importe quel champ dans Grist
+        // Fonction d'écriture universelle
         async function updateField(rowId, fieldName, value) {
             try {
                 let parsedValue = value;
-                // Si c'est une colonne de référence (ID numérique)
+                // Conversion obligatoire en nombre pour les colonnes de référence Grist
                 if (['domaine', 'attribuee_a', 'statut'].includes(fieldName)) {
                     parsedValue = value ? Number(value) : null;
                 }
@@ -168,10 +173,10 @@
                     id: rowId,
                     fields: { [fieldName]: parsedValue }
                 });
-                console.log(`Champ ${fieldName} mis à jour pour la ligne ${rowId}`);
+                console.log(`Mise à jour réussie : ${fieldName} = ${parsedValue} pour la ligne ${rowId}`);
             } catch (err) {
                 console.error(`Erreur lors de la mise à jour de ${fieldName} :`, err);
-                alert("Échec de la modification.");
+                alert("Échec de la modification sur le champ " + fieldName);
             }
         }
     </script>
