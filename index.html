@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Planificateur d'équipe - Grist</title>
+    <!-- Chargement de l'API Grist -->
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #f4f6f9; color: #333; }
+        h2 { margin-top: 0; color: #2c3e50; font-size: 1.2rem; display: flex; align-items: center; justify-content: space-between; }
+        #counter { font-size: 0.9rem; background: #e2e8f0; padding: 2px 8px; border-radius: 12px; color: #475569; }
+        .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px; }
+        .task-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #3498db; transition: transform 0.2s; }
+        .task-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .task-domain { font-size: 0.75rem; text-transform: uppercase; font-weight: bold; color: #7f8c8d; margin-bottom: 5px; }
+        .task-title { font-size: 1rem; font-weight: bold; color: #2c3e50; margin-bottom: 8px; }
+        .task-project { font-size: 0.85rem; color: #e67e22; font-weight: 500; margin-bottom: 8px; }
+        .task-details { font-size: 0.85rem; color: #555; margin-bottom: 10px; border-top: 1px solid #eee; padding-top: 8px; }
+        .task-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; border-top: 1px solid #f1f1f1; padding-top: 8px; margin-top: 8px; color: #666; }
+        .badge { background: #eef2f7; padding: 2px 6px; border-radius: 4px; font-weight: 500; }
+        .badge-status { background: #e1f5fe; color: #0288d1; }
+        .empty-state { text-align: center; color: #888; padding: 40px; background: white; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <h2>
+        <span>📋 Planning de l'équipe</span>
+        <span id="counter">0 tâche(s)</span>
+    </h2>
+    
+    <div id="taskList" class="task-container">
+        <div class="empty-state">Chargement des données depuis Grist...</div>
+    </div>
+
+    <script>
+        // 1. Initialisation de l'API Grist en déclarant les colonnes attendues
+        grist.ready({
+            requiredAccess: 'read table',
+            columns: ['domaine', 'projet', 'description', 'taches', 'attribuee_a', 'date_debut', 'date_butoire', 'statut']
+        });
+
+        // 2. Écoute des modifications de la table liée dans Grist
+        grist.onRecords(function(records, mappings) {
+            const container = document.getElementById('taskList');
+            const counter = document.getElementById('counter');
+            container.innerHTML = '';
+
+            if (!records || records.length === 0) {
+                container.innerHTML = '<div class="empty-state">Aucune tâche trouvée dans cette vue.</div>';
+                counter.textContent = '0 tâche';
+                return;
+            }
+
+            counter.textContent = `${records.length} tâche(s)`;
+            const grid = document.createElement('div');
+            grid.className = 'task-grid';
+
+            records.forEach(record => {
+                // Traduction des clés internes Grist vers vos noms de colonnes via le mapping
+                const mapped = grist.mapColumnNamesBack(record, mappings);
+                if (mapped) {
+                    const card = document.createElement('div');
+                    card.className = 'task-card';
+                    
+                    card.innerHTML = `
+                        <div class="task-domain">${mapped.domaine || 'Général'}</div>
+                        ${mapped.projet ? `<div class="task-project">📁 ${mapped.projet}</div>` : ''}
+                        <div class="task-title">${mapped.taches || 'Sans intitulé'}</div>
+                        ${mapped.description ? `<div class="task-details">${mapped.description}</div>` : ''}
+                        <div class="task-footer">
+                            <span>👤 ${mapped.attribuee_a || 'Non assigné'}</span>
+                            <span class="badge badge-status">${mapped.statut || 'À définir'}</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: #888; margin-top: 5px; text-align: right;">
+                            📅 ${mapped.date_debut || '...'} ➔ ${mapped.date_butoire || '...'}
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                }
+            });
+
+            container.appendChild(grid);
+        });
+    </script>
+</body>
+</html>
